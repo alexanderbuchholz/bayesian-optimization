@@ -26,9 +26,24 @@ def barnin_function(x):
     
     res = a*(x2-b*x1**2+c*x1-r)**2 + s*(1-t)*np.cos(x1)+s
     return res 
-target_function = barnin_function
+def hyper_ellipsoid_function(x):
+    """
+
+    """
+    return (x**2).sum(axis=0)
+
 N = 100
-x = np.random.random((2,N))*15+np.array([[-5],[0]])
+if False: 
+    target_function = barnin_function
+    x = np.random.random((2,N))*15+np.array([[-5],[0]])
+    bounds = np.array([[-5,10], [0,15]])
+if True: 
+    target_function = hyper_ellipsoid_function
+    x = np.random.random((2,N))*10+np.array([[-5],[5]])
+    bounds = np.array([[-5,5], [-5,5]])
+
+
+
 y = target_function(x)
 
 
@@ -57,7 +72,7 @@ cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
 plt.colorbar(cp)
 plt.savefig('surface_grid.png')
 plt.show()
-
+plt.clf()
 # plot the GP surface
 model_gp.fit(x.transpose(), y)
 real_loss = [model_gp.predict(params.reshape(1,-1)) for params in param_grid]
@@ -70,6 +85,7 @@ cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
 plt.colorbar(cp)
 plt.savefig('surface_gp.png')
 plt.show()
+plt.clf()
 
 
 
@@ -146,7 +162,7 @@ def sample_next_hyperparameter(acquisition_func, gaussian_process, evaluated_los
     return best_x
 
 #ipdb.set_trace()
-bounds = np.array([[-5,10], [0,15]])
+
 #x_new = np.random.random((2,1))*15+np.array([[-5],[0]])
 #expected_improvement(x_new, model_gp, y)
 for i_rep in range(100):
@@ -166,6 +182,7 @@ print param_grid[np.array(real_loss).argmin(), :]
 C, G = np.meshgrid(lambdas, gammas)
 plt.figure()
 cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
+plt.scatter(x[0,:], x[1,:])
 plt.colorbar(cp)
 plt.savefig('surface_gp_end.png')
 plt.show()
