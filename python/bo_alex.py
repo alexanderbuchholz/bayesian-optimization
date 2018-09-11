@@ -1,10 +1,17 @@
-import numpy as np
+import autograd.numpy as np
+from autograd import grad
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 from scipy.optimize import minimize
-import sklearn.gaussian_process as gp
 
+import copy
 import ipdb
+
+import warnings
+
+with warnings.catch_warnings():
+    warnings.filterwarnings("ignore",category=DeprecationWarning)
+    import sklearn.gaussian_process as gp
 
 # define the function that we want to minimize
 def barnin_function(x):
@@ -32,7 +39,7 @@ def hyper_ellipsoid_function(x):
     """
     return (x**2).sum(axis=0)
 
-N = 100
+N = 20
 if False: 
     target_function = barnin_function
     x = np.random.random((2,N))*15+np.array([[-5],[0]])
@@ -120,6 +127,53 @@ def expected_improvement(x, gaussian_process, evaluated_loss):
 
     return  expected_improvement
 
+def maximize_gp(gaussian_process, bounds, n_restarts=20):
+    """
+    we maximize the gp in order to use calculate the knowledge gradient
+    """
+    n_params = bounds.shape[0]
+    best_x = None
+    best_mu = 1000000
+    for starting_point in np.random.uniform(bounds[:, 0], bounds[:, 1], size=(n_restarts, n_params)):
+        res = minimize(fun=gaussian_process.predict,
+                       x0=starting_point.reshape(1, -1),
+                       bounds=bounds,
+                       method='L-BFGS-B')
+
+        if res.fun < best_mu:
+            best_mu = res.fun
+            best_x = res.x
+    return best_x, best_mu
+    #max_gp = minimize(gaussian_process.predict)
+def calculate_kg(x_current, gaussian_process, x, y, bounds):
+    """
+    calculate the knowledge gradient
+    """
+    best_x, best_mu = maximize_gp(gaussian_process, bounds)
+    mu_np1_list = []
+    for i in range(20):
+        y_sampled = gaussian_process.sample_y(best_x, n_samples=1, random_state=i)
+        
+        y_intermediate = np.hstack((y, y_sampled.flatten()))
+        x_intermediate = np.hstack((x, best_x[:,np.newaxis]))
+
+        gp_intermediate = copy.copy(gaussian_process)
+        gp_intermediate.fit(x_intermediate.transpose(), y_intermediate)
+
+        __, best_mu_np1 = maximize_gp(gp_intermediate, bounds)
+        mu_np1_list.append(best_mu_np1)
+        (np.array(mu_np1_list)-best_mu).mean()
+    kg = (np.array(mu_np1_list)-best_mu).mean()
+    
+    ipdb.set_trace()
+    return(kg)
+
+
+
+    
+
+
+
 
 def sample_next_hyperparameter(acquisition_func, gaussian_process, evaluated_loss,
                                bounds=(0, 10), n_restarts=10):
@@ -167,8 +221,9 @@ def sample_next_hyperparameter(acquisition_func, gaussian_process, evaluated_los
 #expected_improvement(x_new, model_gp, y)
 for i_rep in range(100):
     next_point = sample_next_hyperparameter(expected_improvement, model_gp, y, bounds=bounds, n_restarts=25)
+    ipdb.set_trace()
     next_loss = target_function(next_point[:,np.newaxis])
-    
+    calculate_kg(next_point, model_gp, x, y, bounds)
     y = np.hstack((y, next_loss))
     x = np.hstack((x, next_point[:,np.newaxis]))
     model_gp.fit(x.transpose(), y)
