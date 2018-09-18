@@ -9,9 +9,9 @@ import ipdb
 
 import warnings
 
-with warnings.catch_warnings():
-    warnings.filterwarnings("ignore",category=DeprecationWarning)
-    import sklearn.gaussian_process as gp
+#with warnings.catch_warnings():
+#    warnings.filterwarnings("ignore",category=DeprecationWarning)
+import sklearn.gaussian_process as gp
 
 # define the function that we want to minimize
 def barnin_function(x):
@@ -78,7 +78,7 @@ plt.figure()
 cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
 plt.colorbar(cp)
 plt.savefig('surface_grid.png')
-plt.show()
+#plt.show()
 plt.clf()
 # plot the GP surface
 model_gp.fit(x.transpose(), y)
@@ -91,7 +91,7 @@ plt.figure()
 cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
 plt.colorbar(cp)
 plt.savefig('surface_gp.png')
-plt.show()
+#plt.show()
 plt.clf()
 
 
@@ -127,18 +127,19 @@ def expected_improvement(x, gaussian_process, evaluated_loss):
 
     return  expected_improvement
 
-def maximize_gp(gaussian_process, bounds, n_restarts=20):
+def maximize_gp(gaussian_process, bounds, n_restarts=1):
     """
     we maximize the gp in order to use calculate the knowledge gradient
     """
     n_params = bounds.shape[0]
     best_x = None
     best_mu = 1000000
+    #ipdb.set_trace()
+    target_inter = lambda x: gaussian_process.predict(np.atleast_2d(x))
+
     for starting_point in np.random.uniform(bounds[:, 0], bounds[:, 1], size=(n_restarts, n_params)):
-        res = minimize(fun=gaussian_process.predict,
-                       x0=starting_point.reshape(1, -1),
-                       bounds=bounds,
-                       method='L-BFGS-B')
+        res = minimize(fun=target_inter, x0=starting_point, bounds=bounds, method='L-BFGS-B')
+
 
         if res.fun < best_mu:
             best_mu = res.fun
@@ -149,29 +150,24 @@ def calculate_kg(x_current, gaussian_process, x, y, bounds):
     """
     calculate the knowledge gradient
     """
+    #ipdb.set_trace()
     best_x, best_mu = maximize_gp(gaussian_process, bounds)
     mu_np1_list = []
     for i in range(20):
-        y_sampled = gaussian_process.sample_y(best_x, n_samples=1, random_state=i)
+        y_sampled = gaussian_process.sample_y(best_x.reshape(1,-1), n_samples=1, random_state=i)
         
         y_intermediate = np.hstack((y, y_sampled.flatten()))
         x_intermediate = np.hstack((x, best_x[:,np.newaxis]))
 
         gp_intermediate = copy.copy(gaussian_process)
         gp_intermediate.fit(x_intermediate.transpose(), y_intermediate)
-
         __, best_mu_np1 = maximize_gp(gp_intermediate, bounds)
         mu_np1_list.append(best_mu_np1)
-        (np.array(mu_np1_list)-best_mu).mean()
+
     kg = (np.array(mu_np1_list)-best_mu).mean()
     
-    ipdb.set_trace()
-    return(kg)
-
-
-
     
-
+    return(kg)
 
 
 
@@ -197,7 +193,7 @@ def sample_next_hyperparameter(acquisition_func, gaussian_process, evaluated_los
 
     """
     best_x = None
-    best_acquisition_value = 1
+    best_acquisition_value = 100000
     n_params = bounds.shape[0]
     #bounds = bounds.transpose()
 
@@ -219,11 +215,13 @@ def sample_next_hyperparameter(acquisition_func, gaussian_process, evaluated_los
 
 #x_new = np.random.random((2,1))*15+np.array([[-5],[0]])
 #expected_improvement(x_new, model_gp, y)
+kg_list = []
 for i_rep in range(100):
     next_point = sample_next_hyperparameter(expected_improvement, model_gp, y, bounds=bounds, n_restarts=25)
-    ipdb.set_trace()
+    #ipdb.set_trace()
     next_loss = target_function(next_point[:,np.newaxis])
-    calculate_kg(next_point, model_gp, x, y, bounds)
+    #ipdb.set_trace()
+    kg_list.append(calculate_kg(next_point, model_gp, x, y, bounds))
     y = np.hstack((y, next_loss))
     x = np.hstack((x, next_point[:,np.newaxis]))
     model_gp.fit(x.transpose(), y)
@@ -240,5 +238,5 @@ cp = plt.contourf(C, G, np.array(real_loss).reshape(C.shape))
 plt.scatter(x[0,:], x[1,:])
 plt.colorbar(cp)
 plt.savefig('surface_gp_end.png')
-plt.show()
+plt.clf()
 ipdb.set_trace()
