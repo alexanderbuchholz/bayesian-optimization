@@ -45,8 +45,8 @@ def one_expected_improvement(X_to_evaluate, y_train, x_train, sample_size=100):
     out_mean = mean_pred(X_to_evaluate, y_train, x_train)
     L_x = torch.potrf(out_covar, upper=False)
     Z = torch.normal(torch.ones(X_to_evaluate.shape[0], sample_size))
-    inner_term = torch.max(out_mean + L_x.mm(Z), torch.zeros(out_mean.shape))
-    import ipdb; ipdb.set_trace()
+    inner_term = torch.max(f_max - (out_mean - L_x.mm(Z)), torch.zeros(out_mean.shape))
+    #import ipdb; ipdb.set_trace()
     return inner_term.mean(1)
 
 X_one = torch.ones(1, 1, requires_grad=True)
