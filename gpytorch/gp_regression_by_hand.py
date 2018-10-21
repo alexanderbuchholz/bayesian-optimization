@@ -13,14 +13,16 @@ from gpytorch.kernels.matern_kernel import MaternKernel
 #import ipdb; ipdb.set_trace()
 x_end = 50
 sigma_prior = 0.1
-mkernel = MaternKernel()
+dim_x = 2
+mkernel = MaternKernel(ard_num_dims=dim_x) # this arguments tell the kernel that our input is 2d
 
-X_to_evaluate = torch.ones(5, 1, requires_grad=True)
-X_rand = torch.rand(5, 1, requires_grad=False)
+X_to_evaluate = torch.ones(5, dim_x, requires_grad=True)
+X_rand = torch.rand(5, dim_x, requires_grad=False)
 #x_train = torch.linspace(0,4,20, requires_grad=False).unsqueeze(1)
 
-x_train = x_end*torch.rand(20, 1, requires_grad=False)#.unsqueeze(1)
-y_train = torch.sin(x_train)#+torch.normal(torch.ones(x_train.shape))
+x_train = x_end*torch.rand(20, 2, requires_grad=False)#.unsqueeze(1)
+y_train = torch.sin(torch.norm(x_train, dim=1))#+torch.normal(torch.ones(x_train.shape))
+#import ipdb; ipdb.set_trace()
 
 def mean_pred(X_to_evaluate, y_train, x_train):
     #mu_zeros = torch.zeros(y_train.shape)
