@@ -20,14 +20,9 @@ X_to_evaluate = torch.ones(5, dim_x, requires_grad=True)
 X_rand = torch.rand(5, dim_x, requires_grad=False)
 #x_train = torch.linspace(0,4,20, requires_grad=False).unsqueeze(1)
 
-<<<<<<< HEAD
 x_train = x_end*torch.rand(20, 2, requires_grad=False)#.unsqueeze(1)
 y_train = torch.sin(torch.norm(x_train, dim=1))#+torch.normal(torch.ones(x_train.shape))
 #import ipdb; ipdb.set_trace()
-=======
-x_train = 2*x_end*torch.rand(20, 1, requires_grad=False)-x_end#.unsqueeze(1)
-y_train = torch.sin(x_train)#+torch.normal(torch.ones(x_train.shape))
->>>>>>> 3fe20620ea484718629a8f7790c44daa52b25369
 
 def mean_pred(X_to_evaluate, y_train, x_train):
     #mu_zeros = torch.zeros(y_train.shape)
