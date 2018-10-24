@@ -1,68 +1,85 @@
 # gp regression, coded by hand
 
 import math
-import torch
-import gpytorch
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
 
+from functions_bo import *
 
-from gpytorch.kernels.matern_kernel import MaternKernel
-
-#import ipdb; ipdb.set_trace()
-x_end = 20
+x_range = 4
 sigma_prior = 0.1
-dim_x = 2
+dim_x = 4
+starting_points = 2
 mkernel = MaternKernel(ard_num_dims=dim_x) # this arguments tell the kernel that our input is 2d
 
-X_to_evaluate = torch.ones(5, dim_x, requires_grad=True)
-X_rand = torch.rand(5, dim_x, requires_grad=False)
-#x_train = torch.linspace(0,4,20, requires_grad=False).unsqueeze(1)
+def sample_points(n, dim, x_range, requires_grad=False):
+    x = 2*x_range*torch.rand(n, dim, requires_grad=requires_grad)-x_range
+    return(x)
 
-x_train = x_end*torch.rand(20, 2, requires_grad=False)#.unsqueeze(1)
-y_train = torch.sin(torch.norm(x_train, dim=1))#+torch.normal(torch.ones(x_train.shape))
-#import ipdb; ipdb.set_trace()
 
-def mean_pred(X_to_evaluate, y_train, x_train):
-    assert X_to_evaluate.shape[1] == x_train.shape[1]
-    #mu_zeros = torch.zeros(y_train.shape)
-    mu_prior = torch.zeros(y_train.shape)
-    #import ipdb; ipdb.set_trace()
-    K_test = mkernel.forward(x_train, x_train).squeeze(0)+sigma_prior*torch.eye(x_train.shape[0])
-    K_new = mkernel.forward(X_to_evaluate, x_train).squeeze(0)
-    #import ipdb; ipdb.set_trace()
-    mu_predict = torch.matmul(K_new, torch.inverse(K_test)).mm((y_train-mu_prior).unsqueeze(1))
-    return mu_predict
+def target_function(x):
+    return(-torch.norm(x, dim=1)**2)
 
-def covar_pred(X_to_evaluate, y_train, x_train):
-    assert X_to_evaluate.shape[1] == x_train.shape[1]
-    #mu_zeros = torch.zeros(y_train.shape)
-    
-    K_test = mkernel.forward(x_train, x_train).squeeze(0)+sigma_prior*torch.eye(x_train.shape[0])
-    K_new = mkernel.forward(X_to_evaluate, x_train).squeeze(0)
-    K_pred = mkernel.forward(X_to_evaluate, X_to_evaluate).squeeze(0)
-    sigma_predict = K_pred - torch.matmul(K_new, torch.inverse(K_test)).mm(K_new.t())
-    return sigma_predict
 
-def one_expected_improvement(X_to_evaluate, y_train, x_train, sample_size=100):
-    assert X_to_evaluate.shape[1] == x_train.shape[1]
-    #import ipdb; ipdb.set_trace()
-    f_max = y_train.max()
-    out_covar = covar_pred(X_to_evaluate, y_train, x_train)
-    #import ipdb; ipdb.set_trace()
-    out_mean = mean_pred(X_to_evaluate, y_train, x_train)
-    L_x = torch.potrf(out_covar, upper=False)
-    Z = torch.normal(torch.ones(X_to_evaluate.shape[0], sample_size))
-    min_value, __ = torch.min(out_mean + L_x.mm(Z), dim=0)
-    inner_term = torch.max((f_max - min_value), torch.zeros(sample_size))
-    #import ipdb; ipdb.set_trace()
-    return inner_term.mean()
+x_train = sample_points(starting_points, dim_x, x_range)
+y_train = target_function(x_train)
 
-#X_one = torch.ones(1, 1, requires_grad=True)
 
-#mean_expected_improvement = one_expected_improvement(X_one, y_train, x_train)
+parameters_model = {'sigma_prior': sigma_prior}
+parameters_data = {
+    'dim_x' : dim_x, 
+    'y_train' : y_train,
+    'x_train' : x_train,
+    'x_to_evaluate' : torch.ones(1, dim_x)
+}
+class_ei = OneExpectedImprovement(parameters_model, parameters_data)
 
+class_ei.fit_gp()
+
+
+
+#par, value = maximize_one_ei(class_ei, training_iter = 1000)
+#y_new_eval = target_function(par)
+#class_ei.update_gp(y_new_eval, par)
+#starting_point = torch.nn.Parameter(x_range*torch.randn(1, dim_x, requires_grad=True))
+#class_ei.my_param = starting_point
+
+
+
+def bayesian_optimization(class_ei, steps_outer_loop=50, multistarts=10):
+    """
+    run bayesian optimization to maximize the function
+    """
+    starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
+    class_ei.my_param = starting_point
+    for t in range(steps_outer_loop):
+        value_list = []
+        par_list = []
+        for i_multistart in range(multistarts):
+            par, value = maximize_one_ei(class_ei, training_iter = 10)
+            value_list.append(value), par_list.append(par)
+            starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
+            class_ei.my_param = starting_point
+            import ipdb; ipdb.set_trace()
+        y_new_eval = target_function(par)
+        class_ei.update_gp(y_new_eval, par)
+        starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
+        class_ei.my_param = starting_point
+    y_new_eval = target_function(par)
+    class_ei.update_gp(y_new_eval, par)
+    values, indices = class_ei.y_train.max(0)
+    print('found optimum with value %s at %s' %(values, class_ei.x_train[indices,:]))
+
+plt.scatter(class_ei.x_train.data.numpy()[:,0], class_ei.y_train.data.numpy(), label='starting point')
+plt.show()
+
+
+bayesian_optimization(class_ei, 100)
+import ipdb; ipdb.set_trace()
+
+plt.scatter(class_ei.x_train.data.numpy()[:,0], class_ei.y_train.data.numpy(), label='starting point')
+plt.show()
 #out_covar = covar_pred(X_to_evaluate, y_train, x_train)
 #out_mean = mean_pred(X_to_evaluate, y_train, x_train)
 if False: 
@@ -77,7 +94,7 @@ if False:
 m_multistart = 10
 import copy
 import numpy as np
-X_test = (torch.rand((m_multistart, dim_x), requires_grad=False)*2*x_end)-x_end
+X_test = (torch.rand((m_multistart, dim_x), requires_grad=False)*2*x_range)-x_range
 X_test_copy = copy.deepcopy(X_test)
 #import ipdb; ipdb.set_trace()
 #X_test = torch.tensor([9.], requires_grad=True, dtype=torch.float)
@@ -107,7 +124,7 @@ for i_multistart in range(m_multistart):
     multistart_x_test.append(X_test_inter.data.numpy())
 #import ipdb; ipdb.set_trace()
 if True: 
-    x_support = torch.linspace(-x_end, x_end, 200, requires_grad=False).unsqueeze(1)
+    x_support = torch.linspace(-x_range, x_range, 200, requires_grad=False).unsqueeze(1)
     confidence_bound = covar_pred(x_support, y_train, x_train).diag()
     predicted_y = mean_pred(x_support, y_train, x_train).squeeze()
     #plt.scatter(x_train.data.numpy(), y_train.data.numpy(), label='true points')
