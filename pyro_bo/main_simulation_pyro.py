@@ -18,6 +18,7 @@ np.random.seed(42)
 X = np.random.random(size=(7, dim))
 X = torch.tensor(X, dtype=torch.float)
 y = f_target(X)
+sample_sizes_list = [10, 20, 50, 100]
 
 params_data = {
     'X' : X,
@@ -29,25 +30,30 @@ params_data = {
 
 params_bo_mc = {
     'sampling_type' : 'MC', 
-    'sample_size' : 20,
+    'sample_size' : sample_sizes_list[0],
     'num_candidates' : 20
 }
 
 params_bo_rqmc = {
     'sampling_type' : 'RQMC', 
-    'sample_size' : 20,
+    'sample_size' : sample_sizes_list[0],
     'num_candidates' : 20
 }
 
-Mrep = 20
-res_dict = {'MC': [], 'RQMC' : []}
-
-for m_rep in range(Mrep):
-    __, mc_dict = run_bo_pyro(params_bo_mc, params_data)
-    __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data)
-    res_dict['MC'].append(mc_dict)
-    res_dict['RQMC'].append(rqmc_dict)
-    with open('pyro_bo_test.pkl', 'wb') as file:
-        pickle.dump(res_dict, file, protocol=2)
+Mrep = 40
+outer_loop_steps = 40
+res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
+            'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
+            }
+for sample_size in sample_sizes_list:
+    params_bo_mc['sample_size'] = sample_size
+    params_bo_rqmc['sample_size'] = sample_size
+    for m_rep in range(Mrep):
+        __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
+        __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
+        res_dict['MC'][str(sample_size)].append(mc_dict)
+        res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+        with open('pyro_bo_mrep_%s.pkl'%Mrep, 'wb') as file:
+            pickle.dump(res_dict, file, protocol=2)
 
 

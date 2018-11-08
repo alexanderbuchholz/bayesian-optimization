@@ -158,7 +158,7 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
     f_target = params_data['f_target']
-    print('run model with %s' % sampling_type)
+    print('run model with %s and %s samples' % (sampling_type, sample_size))
     start_time = time.time()
     gpmodel.optimize()
     for i in range(outer_loop_steps):
