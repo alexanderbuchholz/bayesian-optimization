@@ -1,11 +1,12 @@
 import numpy as np
 import os
-
-if 'LowDiscrepancy.so' in os.listdir(os.getcwd()):
-    pass
-else: 
-    import numpy.f2py
-    numpy.f2py.compile(open('LowDiscrepancy.f', 'rb').read(), modulename='LowDiscrepancy')
+from scipy.stats import norm
+#import ipdb; ipdb.set_trace()
+#if 'LowDiscrepancy.so' in os.listdir(os.getcwd()+'/qmc_python'):
+#    pass
+#else: 
+#import numpy.f2py
+#numpy.f2py.compile(open('./LowDiscrepancy.f', 'rb').read(), modulename='LowDiscrepancy')
 
 import LowDiscrepancy
 
@@ -42,13 +43,13 @@ def sobol_sequence(N, DIMEN, IFLAG=0, iSEED=0, INIT=1, TRANSFORM=0):
         QN        - QUASI NUMBERS, A "N" BY "DIMEN" ARRAY
     """
     error_dim(DIMEN)
-    QN = LowDiscrepancy.sobol(N, DIMEN, IFLAG, iSEED, INIT, TRANSFORM)
-    if TRANSFORM==0:
-        while not test_if_uniform(QN):
-            iSEED += 1
-            QN = LowDiscrepancy.sobol(N, DIMEN, IFLAG, iSEED, INIT, TRANSFORM)
-            print("error in scrambling, increment seed")
-        return(QN)
+    QN = LowDiscrepancy.sobol(N, DIMEN, IFLAG, iSEED, INIT, 0)
+    while not test_if_uniform(QN):
+        iSEED += 1
+        QN = LowDiscrepancy.sobol(N, DIMEN, IFLAG, iSEED, INIT, 0)
+        print("error in scrambling, increment seed")
+    if TRANSFORM==1:
+        return(norm.ppf(QN))
     else: 
         return(QN)
 
@@ -64,7 +65,12 @@ def halton_sequence(N, DIMEN, INIT=1, TRANSFORM=0):
         QN        - QUASI NUMBERS, A "N" BY "DIMEN" ARRAY
     """
     error_dim(DIMEN)
-    return(LowDiscrepancy.halton(N, DIMEN, INIT, TRANSFORM))
+    QN = LowDiscrepancy.halton(N, DIMEN, INIT, 0)
+    if TRANSFORM==1:
+        return(norm.ppf(QN))
+    else: 
+        return(QN)
+
 
 
 if __name__ == '__main__':

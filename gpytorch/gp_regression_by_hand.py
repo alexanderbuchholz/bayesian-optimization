@@ -1,16 +1,20 @@
 # gp regression, coded by hand
+from __future__ import print_function
+from __future__ import division
+
 
 import math
 import matplotlib
 matplotlib.use('TkAgg')
 from matplotlib import pyplot as plt
-
+import numpy as np
 from functions_bo import *
 
 x_range = 4
 sigma_prior = 0.1
+sample_size = 20
 dim_x = 4
-starting_points = 2
+starting_points = 10
 mkernel = MaternKernel(ard_num_dims=dim_x) # this arguments tell the kernel that our input is 2d
 
 def sample_points(n, dim, x_range, requires_grad=False):
@@ -26,12 +30,14 @@ x_train = sample_points(starting_points, dim_x, x_range)
 y_train = target_function(x_train)
 
 
-parameters_model = {'sigma_prior': sigma_prior}
+parameters_model = {'sigma_prior': sigma_prior, 'sample_size' : sample_size }
 parameters_data = {
     'dim_x' : dim_x, 
     'y_train' : y_train,
     'x_train' : x_train,
-    'x_to_evaluate' : torch.ones(1, dim_x)
+    'x_to_evaluate' : torch.ones(1, dim_x, 
+    'x_range' : x_range, 
+    'sample_points': sample_points)
 }
 class_ei = OneExpectedImprovement(parameters_model, parameters_data)
 
@@ -47,35 +53,12 @@ class_ei.fit_gp()
 
 
 
-def bayesian_optimization(class_ei, steps_outer_loop=50, multistarts=10):
-    """
-    run bayesian optimization to maximize the function
-    """
-    starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
-    class_ei.my_param = starting_point
-    for t in range(steps_outer_loop):
-        value_list = []
-        par_list = []
-        for i_multistart in range(multistarts):
-            par, value = maximize_one_ei(class_ei, training_iter = 10)
-            value_list.append(value), par_list.append(par)
-            starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
-            class_ei.my_param = starting_point
-            import ipdb; ipdb.set_trace()
-        y_new_eval = target_function(par)
-        class_ei.update_gp(y_new_eval, par)
-        starting_point = torch.nn.Parameter(sample_points(1, dim_x, x_range, requires_grad=True))
-        class_ei.my_param = starting_point
-    y_new_eval = target_function(par)
-    class_ei.update_gp(y_new_eval, par)
-    values, indices = class_ei.y_train.max(0)
-    print('found optimum with value %s at %s' %(values, class_ei.x_train[indices,:]))
 
 plt.scatter(class_ei.x_train.data.numpy()[:,0], class_ei.y_train.data.numpy(), label='starting point')
 plt.show()
 
 
-bayesian_optimization(class_ei, 100)
+bayesian_optimization(class_ei, 60)
 import ipdb; ipdb.set_trace()
 
 plt.scatter(class_ei.x_train.data.numpy()[:,0], class_ei.y_train.data.numpy(), label='starting point')
