@@ -18,7 +18,7 @@ np.random.seed(42)
 X = np.random.random(size=(7, dim))
 X = torch.tensor(X, dtype=torch.float)
 y = f_target(X)
-sample_sizes_list = [10, 20, 50, 100]
+sample_sizes_list = [5, 10, 20, 50, 100]
 
 params_data = {
     'X' : X,
@@ -53,7 +53,7 @@ for sample_size in sample_sizes_list:
         __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
         res_dict['MC'][str(sample_size)].append(mc_dict)
         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-        with open('pyro_bo_mrep_%s.pkl'%Mrep, 'wb') as file:
+        with open('pyro_bo_mrep_%s_v2.pkl'%Mrep, 'wb') as file:
             pickle.dump(res_dict, file, protocol=2)
 
 
