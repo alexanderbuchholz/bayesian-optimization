@@ -14,7 +14,7 @@ import time
 import pyro
 import pyro.contrib.gp as gp
 
-pyro.enable_validation(True)  # can help with debugging
+#pyro.enable_validation(True)  # can help with debugging
 #pyro.set_rng_seed(1)
 
 import sys
