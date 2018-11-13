@@ -10,10 +10,12 @@ from torch.distributions import constraints, transform_to
 import ipdb
 import numpy as np
 import time
+import numpy as np
 
 import pyro
 import pyro.contrib.gp as gp
 
+from pyDOE import lhs
 #pyro.enable_validation(True)  # can help with debugging
 #pyro.set_rng_seed(1)
 
@@ -100,18 +102,19 @@ def next_x(gpmodel,
     sample_size=20):
     candidates = []
     values = []
-
-    x_init = gpmodel.X[-1:,:]
+    #import ipdb; ipdb.set_trace()
+    dim = gpmodel.X.shape[1]
+    x_init_points = torch.tensor(lhs(n=dim, samples=num_candidates, criterion='maximin'), dtype=torch.float)
+    
+    #x_init = x_init_points[:1,:]#gpmodel.X[-1:,:]
     for i in range(num_candidates):
-        try: 
-            x = find_a_candidate(x_init, gpmodel, lower_bound, upper_bound, sampling_type=sampling_type, sample_size=sample_size)
-            y = expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
-        except:
-            ipdb.set_trace()
+        x_init = x_init_points[i,:].unsqueeze(0)
+        x = find_a_candidate(x_init, gpmodel, lower_bound, upper_bound, sampling_type=sampling_type, sample_size=sample_size)
+        y = expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
         candidates.append(x)
         values.append(y)
         #import ipdb; ipdb.set_trace()
-        x_init = x.new_empty(gpmodel.X.shape[1]).uniform_(lower_bound, upper_bound).unsqueeze(0)
+        #x_init = x.new_empty(gpmodel.X.shape[1]).uniform_(lower_bound, upper_bound).unsqueeze(0)
     #import ipdb; ipdb.set_trace()
     argmin = torch.min(torch.cat(values), dim=0)[1].item()
     return candidates[argmin]
@@ -153,7 +156,7 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     X = params_data['X']
     y = params_data['y']
     gpmodel = gp.models.GPRegression(X, y, gp.kernels.Matern52(input_dim=params_data['dim']),
-                                 noise=torch.tensor(0.01), jitter=1.0e-4)
+                                 noise=torch.tensor(0.01), jitter=1.0e-2)
 
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
@@ -161,13 +164,23 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     print('run model with %s and %s samples' % (sampling_type, sample_size))
     start_time = time.time()
     gpmodel.optimize()
+    y_list_min  = []
+    x_list_min  = []
     for i in range(outer_loop_steps):
         print('outer loop step %s of %s'% (i, outer_loop_steps))
         xmin = next_x(gpmodel, sampling_type=sampling_type, sample_size=sample_size)
+        #print(xmin, f_target(xmin))
         update_posterior(xmin, f_target, gpmodel)
+        val_y, ind = gpmodel.y.min(0)
+        val_x = gpmodel.X[ind,:]
+        y_list_min.append(val_y.detach().numpy())
+        x_list_min.append(val_x.detach().numpy())
+        #import ipdb; ipdb.set_trace()
     
     print("run time %s seconds" %(time.time() -start_time))
-    res_dict = {'X' : gpmodel.X.detach().numpy(), 'y' :gpmodel.y.numpy()}
+    res_dict = {'X_exp' : gpmodel.X.detach().numpy(), 'y_exp' :gpmodel.y.numpy(),
+                'X_min': np.array(x_list_min), 'y_min' : np.array(y_list_min)
+                }
     return gpmodel, res_dict
 
 if __name__ == '__main__':
