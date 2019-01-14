@@ -55,7 +55,7 @@ X = np.random.random(size=(7, dim))
 X = torch.tensor(X, dtype=torch.float)
 #import ipdb; ipdb.set_trace()
 y = f_target(X)
-sample_sizes_list = [5, 10, 20, 50, 100]
+sample_sizes_list = [5, 10, 20, 50]#, 100]
 
 params_data = {
     'X' : X,
@@ -78,7 +78,7 @@ params_bo_rqmc = {
 }
 
 Mrep = 40
-outer_loop_steps = 40
+outer_loop_steps = 30
 res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
             'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
             }
