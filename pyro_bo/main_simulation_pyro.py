@@ -31,7 +31,13 @@ def f_hart6(x,
 
     More details: <http://www.sfu.ca/~ssurjano/hart6.html>
     """
-    return -np.sum(alpha * np.exp(-np.sum(A * (np.array(x) - P)**2, axis=1)))
+    x_multiplicity =  x.shape[0]
+    res_list = []
+    for i in range(x_multiplicity):
+        res = -np.sum(alpha * np.exp(-np.sum(A * (np.array(x[i,:]) - P)**2, axis=1)))
+        res_list.append(res)
+    #import ipdb; ipdb.set_trace()
+    return torch.tensor(res_list, dtype=torch.float)
 
 
 def f_branin(x, a=1, b=5.1 / (4 * np.pi**2), c=5. / np.pi,
@@ -55,14 +61,15 @@ parallelism = "serial"
 #import concurrent
 #pool = ProcessPoolExecutor(4)
 
-f_target = f_branin
-dim = 2
+#f_target = f_branin
+f_target = f_hart6
+dim = 6
 np.random.seed(42)
 X = np.random.random(size=(7, dim))
 X = torch.tensor(X, dtype=torch.float)
 #import ipdb; ipdb.set_trace()
 y = f_target(X)
-sample_sizes_list = [5, 10, 20, 50]#, 100]
+sample_sizes_list = [20, 5, 10, 20, 50]#, 100]
 
 params_data = {
     'X' : X,
@@ -84,8 +91,8 @@ params_bo_rqmc = {
     'num_candidates' : 20
 }
 
-Mrep = 40
-outer_loop_steps = 50
+Mrep = 1
+outer_loop_steps = 20
 res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
             'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
             }

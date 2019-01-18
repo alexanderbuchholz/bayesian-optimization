@@ -75,7 +75,7 @@ def q_expected_improvement(x_q,
     gpmodel,
     sampling_type='MC', 
     sample_size=20):
-    import ipdb; ipdb.set_trace()
+    #import ipdb; ipdb.set_trace()
     mu_q, variance_q = gpmodel(x_q, full_cov=True, noiseless=False)
     f_star = (gpmodel.y).min()
     if sampling_type == 'MC':
@@ -87,7 +87,8 @@ def q_expected_improvement(x_q,
     sigma = torch.cholesky(variance_q)
     f_sample = mu_q.unsqueeze(1)+torch.mm(sigma, z_sample)
     #import ipdb; ipdb.set_trace()
-    return -torch.clamp(f_star-f_sample,0).mean(1).unsqueeze(0)
+    #return -torch.clamp(f_star-f_sample.min(0),0).mean(1).unsqueeze(0)
+    return -torch.clamp(f_star-f_sample.min(0)[0],0).mean().unsqueeze(0)
 
 
 def find_a_candidate(x_init, 
@@ -108,7 +109,7 @@ def find_a_candidate(x_init,
         #ipdb.set_trace()
         minimizer.zero_grad()
         x = transform_to(constraint)(unconstrained_x)
-        y = expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
+        y = q_expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
         autograd.backward(unconstrained_x, autograd.grad(y, unconstrained_x))
         return y
 
@@ -123,19 +124,24 @@ def next_x(gpmodel,
     upper_bound=1, 
     num_candidates=20, 
     sampling_type="RQMC", 
-    sample_size=20):
+    sample_size=20,
+    q_size=20):
     candidates = []
     values = []
     #import ipdb; ipdb.set_trace()
     dim = gpmodel.X.shape[1]
-    x_init_points = torch.tensor(lhs(n=dim, samples=num_candidates, criterion='maximin'), dtype=torch.float)
+    # TODO: find a way to get a latin hypercube desing with respect to number of points, 
+    # dimension of X and q points
+    #x_init_points = torch.tensor(lhs(n=dim, samples=num_candidates, criterion='maximin'), dtype=torch.float)
     
     #x_init = x_init_points[:1,:]#gpmodel.X[-1:,:]
     for i in range(num_candidates):
-        x_init = x_init_points[i,:].unsqueeze(0)
+        x_init_points = torch.tensor(lhs(n=dim, samples=q_size, criterion='maximin'), dtype=torch.float)
+        #import ipdb; ipdb.set_trace()
+        x_init = x_init_points #x_init = x_init_points[i,:].unsqueeze(0)
         x = find_a_candidate(x_init, gpmodel, lower_bound, upper_bound, sampling_type=sampling_type, sample_size=sample_size)
         y = q_expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
-        import ipdb; ipdb.set_trace()
+        
         candidates.append(x)
         values.append(y)
         #import ipdb; ipdb.set_trace()
@@ -180,8 +186,9 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     """
     X = params_data['X']
     y = params_data['y']
+    #import ipdb; ipdb.set_trace()
     gpmodel = gp.models.GPRegression(X, y, gp.kernels.Matern52(input_dim=params_data['dim']),
-                                 noise=torch.tensor(0.01), jitter=1.)
+                                 noise=torch.tensor(0.01), jitter=10.)
 
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
@@ -195,11 +202,13 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     y_list_min  = []
     x_list_min  = []
     for i in range(outer_loop_steps):
-        print('outer loop step %s of %s'% (i, outer_loop_steps))
+        print('approach %s, sample size %s, outer loop step %s of %s'% (sampling_type, sample_size, i, outer_loop_steps))
         xmin = next_x(gpmodel, sampling_type=sampling_type, sample_size=sample_size)
         print("next points evaluated:")
+        #import ipdb; ipdb.set_trace()
         print(xmin, f_target(xmin))
         # update the posterior with the new point found
+        #TODO: do we evaluate the target function at all points??
         update_posterior(xmin, f_target, gpmodel)
         # add to the list of best sampled points
         val_y, ind = gpmodel.y.min(0)
