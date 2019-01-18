@@ -2,6 +2,7 @@
 import pickle
 import torch
 import numpy as np
+import sys
 
 from bo_using_pyro import run_bo_pyro
 
@@ -48,6 +49,12 @@ def f_branin(x, a=1, b=5.1 / (4 * np.pi**2), c=5. / np.pi,
     return (a * (x1 - b * x0 ** 2 + c * x0 - r) ** 2 +
             s * (1 - t) * np.cos(x0) + s)
 
+
+parallelism = "serial"
+#from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+#import concurrent
+#pool = ProcessPoolExecutor(4)
+
 f_target = f_branin
 dim = 2
 np.random.seed(42)
@@ -78,19 +85,51 @@ params_bo_rqmc = {
 }
 
 Mrep = 40
-outer_loop_steps = 30
+outer_loop_steps = 50
 res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
             'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
             }
 for sample_size in sample_sizes_list:
     params_bo_mc['sample_size'] = sample_size
     params_bo_rqmc['sample_size'] = sample_size
+    # if sys.argv[1] is not None:
+    #     for m_rep in range(10*(int(sys.argv[1])-1), 10+10*int(sys.argv[1])):
+    #         __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
+    #         __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
+    #         res_dict['MC'][str(sample_size)].append(mc_dict)
+    #         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+    #         with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
+    #             pickle.dump(res_dict, file, protocol=2)
+
+    #else: #if parallelism == "serial":
     for m_rep in range(Mrep):
         __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
         __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
         res_dict['MC'][str(sample_size)].append(mc_dict)
         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-        with open('pyro_bo_mrep_%s_%s.pkl'%(Mrep, f_target.__name__), 'wb') as file:
+        with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
             pickle.dump(res_dict, file, protocol=2)
+
+    
+
+    # elif parallelism == "multi":
+    #     def parallel_calc(m_rep):
+    #         __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
+    #         __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
+    #         res_dict['MC'][str(sample_size)].append(mc_dict)
+    #         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+    #         return res_dict
+    #     import ipdb; ipdb.set_trace()
+    #     def testfunction(x):
+    #         return x**2
+    #     with concurrent.futures.ProcessPoolExecutor() as executor:
+    #         result = executor.map(testfunction, range(4))
+
+    #     pool.submit(lambda x: x**2, range(4))
+    #     results = [pool.map(parallel_calc, range(Mrep))]
+    #     output = [p.get() for p in results]
+    #     for m_rep, res_dict in enumerate(output):
+    #         with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
+    #             pickle.dump(res_dict, file, protocol=2)
 
 

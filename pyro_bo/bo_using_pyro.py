@@ -40,7 +40,12 @@ def update_posterior(x_new, f_target, gpmodel):
     X = torch.cat([gpmodel.X, x_new]) # incorporate new evaluation
     y = torch.cat([gpmodel.y, y])
     gpmodel.set_data(X, y)
-    gpmodel.optimize()  # optimize the GP hyperparameters using default settings
+    #gpmodel.optimize()  # optimize the GP hyperparameters using default settings
+    try:
+        optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
+        gp.util.train(gpmodel, optimizer)
+    except:
+        ipdb.set_trace()
 
 def lower_confidence_bound(x, kappa=2):
     mu, variance = gpmodel(x, full_cov=False, noiseless=False)
@@ -115,8 +120,8 @@ def next_x(gpmodel,
         values.append(y)
         #import ipdb; ipdb.set_trace()
         #x_init = x.new_empty(gpmodel.X.shape[1]).uniform_(lower_bound, upper_bound).unsqueeze(0)
-    #import ipdb; ipdb.set_trace()
     argmin = torch.min(torch.cat(values), dim=0)[1].item()
+    #import ipdb; ipdb.set_trace()
     return candidates[argmin]
 
 def plot(gs, xmin, xlabel=None, with_title=True):
@@ -156,26 +161,33 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     X = params_data['X']
     y = params_data['y']
     gpmodel = gp.models.GPRegression(X, y, gp.kernels.Matern52(input_dim=params_data['dim']),
-                                 noise=torch.tensor(0.01), jitter=1.0e-2)
+                                 noise=torch.tensor(0.01), jitter=1.)
 
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
     f_target = params_data['f_target']
     print('run model with %s and %s samples' % (sampling_type, sample_size))
     start_time = time.time()
-    gpmodel.optimize()
+    optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
+    gp.util.train(gpmodel, optimizer)
+
+    #gpmodel.optimize()
     y_list_min  = []
     x_list_min  = []
     for i in range(outer_loop_steps):
         print('outer loop step %s of %s'% (i, outer_loop_steps))
         xmin = next_x(gpmodel, sampling_type=sampling_type, sample_size=sample_size)
-        #print(xmin, f_target(xmin))
+        print("next points evaluated:")
+        print(xmin, f_target(xmin))
+        # update the posterior with the new point found
         update_posterior(xmin, f_target, gpmodel)
+        # add to the list of best sampled points
         val_y, ind = gpmodel.y.min(0)
         val_x = gpmodel.X[ind,:]
         y_list_min.append(val_y.detach().numpy())
         x_list_min.append(val_x.detach().numpy())
-        #import ipdb; ipdb.set_trace()
+        print("best points so far:")
+        print(x_list_min[-1], y_list_min[-1])
     
     print("run time %s seconds" %(time.time() -start_time))
     res_dict = {'X_exp' : gpmodel.X.detach().numpy(), 'y_exp' :gpmodel.y.numpy(),
