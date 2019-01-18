@@ -71,6 +71,25 @@ def expected_improvement(x,
     #import ipdb; ipdb.set_trace()
     return -torch.clamp(f_star-f_sample,0).mean(1).unsqueeze(0)
 
+def q_expected_improvement(x_q, 
+    gpmodel,
+    sampling_type='MC', 
+    sample_size=20):
+    import ipdb; ipdb.set_trace()
+    mu_q, variance_q = gpmodel(x_q, full_cov=True, noiseless=False)
+    f_star = (gpmodel.y).min()
+    if sampling_type == 'MC':
+        z_sample = torch.normal(torch.zeros(mu_q.shape[0], sample_size))
+    elif sampling_type == 'RQMC':
+        z_sample = sobol_sequence(sample_size, mu_q.shape[0], iSEED=np.random.randint(10**5), TRANSFORM=1).transpose()
+        z_sample = torch.tensor(z_sample, dtype=torch.float32, requires_grad=False)
+        #ipdb.set_trace()
+    sigma = torch.cholesky(variance_q)
+    f_sample = mu_q.unsqueeze(1)+torch.mm(sigma, z_sample)
+    #import ipdb; ipdb.set_trace()
+    return -torch.clamp(f_star-f_sample,0).mean(1).unsqueeze(0)
+
+
 def find_a_candidate(x_init, 
     gpmodel,
     lower_bound=0, 
@@ -115,7 +134,8 @@ def next_x(gpmodel,
     for i in range(num_candidates):
         x_init = x_init_points[i,:].unsqueeze(0)
         x = find_a_candidate(x_init, gpmodel, lower_bound, upper_bound, sampling_type=sampling_type, sample_size=sample_size)
-        y = expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
+        y = q_expected_improvement(x, gpmodel, sampling_type=sampling_type, sample_size=sample_size)
+        import ipdb; ipdb.set_trace()
         candidates.append(x)
         values.append(y)
         #import ipdb; ipdb.set_trace()
