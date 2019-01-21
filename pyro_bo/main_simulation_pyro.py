@@ -64,8 +64,8 @@ parallelism = "serial"
 #f_target = f_branin
 f_target = f_hart6
 dim = 6
-np.random.seed(42)
-X = np.random.random(size=(7, dim))
+np.random.seed(43)
+X = np.random.random(size=(2, dim))
 X = torch.tensor(X, dtype=torch.float)
 #import ipdb; ipdb.set_trace()
 y = f_target(X)
@@ -91,8 +91,9 @@ params_bo_rqmc = {
     'num_candidates' : 20
 }
 
-Mrep = 1
-outer_loop_steps = 20
+Mrep = 40
+outer_loop_steps = 25
+q_size = 5
 res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
             'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
             }
@@ -110,11 +111,11 @@ for sample_size in sample_sizes_list:
 
     #else: #if parallelism == "serial":
     for m_rep in range(Mrep):
-        __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
-        __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
+        __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+        __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
         res_dict['MC'][str(sample_size)].append(mc_dict)
         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-        with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
+        with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
             pickle.dump(res_dict, file, protocol=2)
 
     
