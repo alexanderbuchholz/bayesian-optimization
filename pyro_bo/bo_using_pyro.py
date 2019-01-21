@@ -6,6 +6,7 @@ import torch
 import torch.autograd as autograd
 import torch.optim as optim
 from torch.distributions import constraints, transform_to
+import pyro.distributions as dist
 
 import ipdb
 import numpy as np
@@ -16,6 +17,7 @@ import pyro
 import pyro.contrib.gp as gp
 
 from pyDOE import lhs
+from scipy.spatial import cKDTree
 #pyro.enable_validation(True)  # can help with debugging
 #pyro.set_rng_seed(1)
 
@@ -45,7 +47,13 @@ def update_posterior(x_new, f_target, gpmodel):
         optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
         gp.util.train(gpmodel, optimizer)
     except:
-        ipdb.set_trace()
+        #ipdb.set_trace()
+        X_new, ind_to_remove = remove_close_points(X.detach().numpy())
+        y_new = np.delete(y, ind_to_remove)
+        #gpmodel.set_data(X_new, y_new)
+        gpmodel.set_data(torch.tensor(X_new, dtype=torch.float), y_new)
+        optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
+        gp.util.train(gpmodel, optimizer)
 
 def lower_confidence_bound(x, kappa=2):
     mu, variance = gpmodel(x, full_cov=False, noiseless=False)
@@ -84,11 +92,24 @@ def q_expected_improvement(x_q,
         z_sample = sobol_sequence(sample_size, mu_q.shape[0], iSEED=np.random.randint(10**5), TRANSFORM=1).transpose()
         z_sample = torch.tensor(z_sample, dtype=torch.float32, requires_grad=False)
         #ipdb.set_trace()
-    sigma = torch.cholesky(variance_q)
+    
+    try:
+        sigma = torch.cholesky(variance_q)
+    except:
+        small_epsilon = 0.1
+        identity_mat = torch.eye(variance_q.shape[0])
+        try:
+            #U, S, V = torch.svd(variance_q+small_epsilon*identity_mat)
+            #sigma = torch.mm(U, torch.diag(S**0.5))
+            sigma = torch.cholesky(variance_q+small_epsilon*identity_mat)
+        except:
+            import ipdb; ipdb.set_trace()
+            # in case it is still not working
     f_sample = mu_q.unsqueeze(1)+torch.mm(sigma, z_sample)
     #import ipdb; ipdb.set_trace()
     #return -torch.clamp(f_star-f_sample.min(0),0).mean(1).unsqueeze(0)
     return -torch.clamp(f_star-f_sample.min(0)[0],0).mean().unsqueeze(0)
+
 
 
 def find_a_candidate(x_init, 
@@ -119,6 +140,28 @@ def find_a_candidate(x_init,
     x = transform_to(constraint)(unconstrained_x)
     return x.detach()
 
+def remove_close_points(x_init, dist=.01):
+    """
+    function that removes point that are too close and might cause numerical 
+    problems
+    input :
+        x = a numpy matrix
+    output : 
+        the same matrix with the points removed
+    """
+    tree = cKDTree(x_init)
+    #import ipdb; ipdb.set_trace()
+    to_remove = tree.query_pairs(r=dist)
+    to_remove_list = []
+    if len(to_remove)>0:
+        for i_set in to_remove:
+            to_remove_list.append(i_set[0])
+        #import ipdb; ipdb.set_trace()
+        x_init = np.delete(x_init, to_remove_list, 0)
+    return(x_init, to_remove_list)
+
+
+
 def next_x(gpmodel, 
     lower_bound=0, 
     upper_bound=1, 
@@ -136,7 +179,13 @@ def next_x(gpmodel,
     
     #x_init = x_init_points[:1,:]#gpmodel.X[-1:,:]
     for i in range(num_candidates):
-        x_init_points = torch.tensor(lhs(n=dim, samples=q_size, criterion='maximin'), dtype=torch.float)
+        x_init = lhs(n=dim, samples=q_size, criterion='maximin')
+        # remove points that are too close to each other
+        x_init, __ = remove_close_points(x_init)
+
+
+        x_init_points = torch.tensor(x_init, dtype=torch.float)
+
         #import ipdb; ipdb.set_trace()
         x_init = x_init_points #x_init = x_init_points[i,:].unsqueeze(0)
         x = find_a_candidate(x_init, gpmodel, lower_bound, upper_bound, sampling_type=sampling_type, sample_size=sample_size)
@@ -180,7 +229,7 @@ def plot(gs, xmin, xlabel=None, with_title=True):
     ax2.legend(loc=1)
 
 
-def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
+def run_bo_pyro(params_bo, params_data, outer_loop_steps=10, q_size=5):
     """
     run the bo 
     """
@@ -188,8 +237,10 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     y = params_data['y']
     #import ipdb; ipdb.set_trace()
     gpmodel = gp.models.GPRegression(X, y, gp.kernels.Matern52(input_dim=params_data['dim']),
-                                 noise=torch.tensor(0.01), jitter=10.)
-
+                                 noise=torch.tensor(0.1), jitter=10**(-1))
+    gpmodel.kernel.set_prior("lengthscale", dist.LogNormal(0.0, 1.0))
+    gpmodel.kernel.set_prior("variance", dist.LogNormal(0.0, 1.0))
+    
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
     f_target = params_data['f_target']
@@ -203,7 +254,7 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10):
     x_list_min  = []
     for i in range(outer_loop_steps):
         print('approach %s, sample size %s, outer loop step %s of %s'% (sampling_type, sample_size, i, outer_loop_steps))
-        xmin = next_x(gpmodel, sampling_type=sampling_type, sample_size=sample_size)
+        xmin = next_x(gpmodel, sampling_type=sampling_type, sample_size=sample_size, q_size=q_size)
         print("next points evaluated:")
         #import ipdb; ipdb.set_trace()
         print(xmin, f_target(xmin))
