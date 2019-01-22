@@ -123,7 +123,8 @@ def find_a_candidate(x_init,
     constraint = constraints.interval(lower_bound, upper_bound)
     unconstrained_x_init = transform_to(constraint).inv(x_init)
     unconstrained_x = torch.tensor(unconstrained_x_init, requires_grad=True)
-    minimizer = optim.LBFGS([unconstrained_x])
+    #minimizer = optim.LBFGS([unconstrained_x])
+    minimizer = optim.Adam([unconstrained_x], lr=0.001)
 
     def closure():
         #ipdb.set_trace()
@@ -227,6 +228,25 @@ def plot(gs, xmin, xlabel=None, with_title=True):
         ax2.set_ylabel("Acquisition Function")
     ax2.legend(loc=1)
 
+def random_search(params_data, outer_loop_steps=10, q_size=5):
+    # compare to benchmark of random sampling
+    n_total_samples = outer_loop_steps*q_size
+    f_target = params_data['f_target']
+    X = params_data['X']
+    y = params_data['y']
+    dim = params_data['dim']
+    
+    X_new = lhs(n=dim, samples=n_total_samples, criterion='maximin')
+    y_new = f_target(X_new)
+    y_all = np.concatenate([y,y_new])
+    X_all = np.concatenate([X,X_new])
+    y_min = np.min(y_all)
+    X_min = X_all[np.argmin(y_all),:]
+    res_dict = {'X_exp' : X_all, 'y_exp' :y_all,
+                'X_min': X_min, 'y_min' : y_min
+                }
+    print('random search: minumum found at x=%s, and y=%s' %(X_min, y_min))
+    return(None, res_dict)
 
 def run_bo_pyro(params_bo, params_data, outer_loop_steps=10, q_size=5):
     """
@@ -268,6 +288,8 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10, q_size=5):
         print("best points so far:")
         print(x_list_min[-1], y_list_min[-1])
     
+
+
     print("run time %s seconds" %(time.time() -start_time))
     res_dict = {'X_exp' : gpmodel.X.detach().numpy(), 'y_exp' :gpmodel.y.numpy(),
                 'X_min': np.array(x_list_min), 'y_min' : np.array(y_list_min)
