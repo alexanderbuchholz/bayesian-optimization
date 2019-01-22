@@ -56,20 +56,15 @@ def f_branin(x, a=1, b=5.1 / (4 * np.pi**2), c=5. / np.pi,
             s * (1 - t) * np.cos(x0) + s)
 
 
-parallelism = "serial"
-#from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
-#import concurrent
-#pool = ProcessPoolExecutor(4)
 
-#f_target = f_branin
-f_target = f_hart6
+f_target = f_branin
+#f_target = f_hart6
 dim = 6
 np.random.seed(43)
 X = np.random.random(size=(2, dim))
 X = torch.tensor(X, dtype=torch.float)
-#import ipdb; ipdb.set_trace()
 y = f_target(X)
-sample_sizes_list = [5, 10, 20, 50]#, 100]
+sample_sizes_list = [5, 10, 20, 50]
 
 params_data = {
     'X' : X,
@@ -82,41 +77,33 @@ params_data = {
 params_bo_mc = {
     'sampling_type' : 'MC', 
     'sample_size' : sample_sizes_list[0],
-    'num_candidates' : 20
+    'num_candidates' : 10
 }
 
 params_bo_rqmc = {
     'sampling_type' : 'RQMC', 
     'sample_size' : sample_sizes_list[0],
-    'num_candidates' : 20
+    'num_candidates' : 10
 }
 
-Mrep = 40
+Mrep = 20
 outer_loop_steps = 25
-q_size = 5
+q_size_list = [2, 5, 10]
+
 res_dict = {'MC': {str(sample_size): [] for sample_size in sample_sizes_list}, 
             'RQMC' : {str(sample_size): [] for sample_size in sample_sizes_list}
             }
-for sample_size in sample_sizes_list:
-    params_bo_mc['sample_size'] = sample_size
-    params_bo_rqmc['sample_size'] = sample_size
-    # if sys.argv[1] is not None:
-    #     for m_rep in range(10*(int(sys.argv[1])-1), 10+10*int(sys.argv[1])):
-    #         __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps)
-    #         __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps)
-    #         res_dict['MC'][str(sample_size)].append(mc_dict)
-    #         res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-    #         with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
-    #             pickle.dump(res_dict, file, protocol=2)
-
-    #else: #if parallelism == "serial":
-    for m_rep in range(Mrep):
-        __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-        __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-        res_dict['MC'][str(sample_size)].append(mc_dict)
-        res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-        with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
-            pickle.dump(res_dict, file, protocol=2)
+for q_size in q_size_list:
+    for sample_size in sample_sizes_list:
+        params_bo_mc['sample_size'] = sample_size
+        params_bo_rqmc['sample_size'] = sample_size
+        for m_rep in range(Mrep):
+            __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+            __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+            res_dict['MC'][str(sample_size)].append(mc_dict)
+            res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+            with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
+                pickle.dump(res_dict, file, protocol=2)
 
     
 

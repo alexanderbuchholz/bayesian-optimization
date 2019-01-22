@@ -116,7 +116,6 @@ def find_a_candidate(x_init,
     gpmodel,
     lower_bound=0, 
     upper_bound=1, 
-    num_candidates=20, 
     sampling_type="MC", 
     sample_size=20):
     # transform x to an unconstrained domain
@@ -240,7 +239,7 @@ def run_bo_pyro(params_bo, params_data, outer_loop_steps=10, q_size=5):
                                  noise=torch.tensor(0.1), jitter=10**(-1))
     gpmodel.kernel.set_prior("lengthscale", dist.LogNormal(0.0, 1.0))
     gpmodel.kernel.set_prior("variance", dist.LogNormal(0.0, 1.0))
-    
+
     sampling_type = params_bo['sampling_type']
     sample_size = params_bo['sample_size']
     f_target = params_data['f_target']
