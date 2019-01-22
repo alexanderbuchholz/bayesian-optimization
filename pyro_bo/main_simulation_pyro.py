@@ -69,7 +69,7 @@ X = np.random.random(size=(2, dim))
 X = torch.tensor(X, dtype=torch.float)
 #import ipdb; ipdb.set_trace()
 y = f_target(X)
-sample_sizes_list = [20, 5, 10, 20, 50]#, 100]
+sample_sizes_list = [5, 10, 20, 50]#, 100]
 
 params_data = {
     'X' : X,
