@@ -42,7 +42,8 @@ def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, m_rep_ite
         X = np.random.random(size=(5, dim)) # using 5 starting points
         X = torch.tensor(X, dtype=torch.float)
         y = f_target(X)
-        
+
+        np.random.seed(m_rep_iter)
 
 
         params_data = {
