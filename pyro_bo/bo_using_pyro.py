@@ -47,13 +47,21 @@ def update_posterior(x_new, f_target, gpmodel):
         optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
         gp.util.train(gpmodel, optimizer)
     except:
-        #ipdb.set_trace()
-        X_new, ind_to_remove = remove_close_points(X.detach().numpy())
-        y_new = np.delete(y, ind_to_remove)
-        #gpmodel.set_data(X_new, y_new)
-        gpmodel.set_data(torch.tensor(X_new, dtype=torch.float), y_new)
-        optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
-        gp.util.train(gpmodel, optimizer)
+        try:
+            #ipdb.set_trace()
+            X_new, ind_to_remove = remove_close_points(X.detach().numpy())
+            y_new = np.delete(y, ind_to_remove)
+            #gpmodel.set_data(X_new, y_new)
+            gpmodel.set_data(torch.tensor(X_new, dtype=torch.float), y_new)
+            optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
+            gp.util.train(gpmodel, optimizer)
+        except:
+            X_new, ind_to_remove = remove_close_points(X.detach().numpy(), 0.05)
+            y_new = np.delete(y, ind_to_remove)
+            #gpmodel.set_data(X_new, y_new)
+            gpmodel.set_data(torch.tensor(X_new, dtype=torch.float), y_new)
+            optimizer = torch.optim.Adam(gpmodel.parameters(), lr=0.001)
+            gp.util.train(gpmodel, optimizer)
 
 def lower_confidence_bound(x, kappa=2):
     mu, variance = gpmodel(x, full_cov=False, noiseless=False)

@@ -1,14 +1,14 @@
 # main simulation based on pyro
 import pickle
 import torch
-#import torch.multiprocessing as mp
-import pathos.multiprocessing as mp
+#   import torch.multiprocessing as mp
+#import pathos.multiprocessing as mp
 import numpy as np
 import sys
 from functools import partial
 #from concurrent.futures import ProcessPoolExecutor
 
-from bo_using_pyro import run_bo_pyro, random_search
+from fit_gp import run_bo_gpytorch, random_search
 from target_functions import f_hart6, f_branin, f_threehump, f_schaffer2, f_rosenbrock
 
 target_functions_dict = {
@@ -21,13 +21,13 @@ target_functions_dict = {
 
 
 q_size_list = [2, 5, 10]
-sample_sizes_list = [5, 10, 20, 50]
+sample_sizes_list = [50, 100, 200, 500]
 
 
 def parallel_calc(m_rep, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=5, q_size=2):
     __, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-    __, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-    __, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+    __, mc_dict = run_bo_gpytorch(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+    __, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
     return [mc_dict, rqmc_dict, random_search_dict]
 
 def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20, outer_loop_steps = 2):
@@ -93,21 +93,21 @@ def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20
                     #import ipdb; ipdb.set_trace()
                 else:
                     for m_rep in range(Mrep):
-                        try:
-                            #mc_dict, rqmc_dict, random_search_dict = parallel_calc(m_rep, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                            mc_dict, rqmc_dict, random_search_dict = partial_parallel_calc(m_rep)
-                            #__, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                            #__, mc_dict = run_bo_pyro(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                            #__, rqmc_dict = run_bo_pyro(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                            res_dict['MC'][str(sample_size)].append(mc_dict)
-                            res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-                            res_dict['random_search'][str(sample_size)].append(random_search_dict)
-                            
-                            with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
-                                pickle.dump(res_dict, file, protocol=2)
+                        #try:
+                        #mc_dict, rqmc_dict, random_search_dict = parallel_calc(m_rep, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                        mc_dict, rqmc_dict, random_search_dict = partial_parallel_calc(m_rep)
+                        #__, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                        #__, mc_dict = run_bo_gpytorch(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                        #__, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                        res_dict['MC'][str(sample_size)].append(mc_dict)
+                        res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+                        res_dict['random_search'][str(sample_size)].append(random_search_dict)
+                        
+                        with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
+                            pickle.dump(res_dict, file, protocol=2)
 
-                        except:
-                            print("BO did not complete, problem")
+                        #except:
+                        #   print("BO did not complete, problem")
                     
     
 
@@ -126,5 +126,5 @@ def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20
     #        with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
     #            pickle.dump(res_dict, file, protocol=2)
 
-
-loop_over_parameters(target_functions_dict, sample_sizes_list, q_size_list, Mrep = 20, outer_loop_steps = 25)
+if __name__ == '__main__':
+    loop_over_parameters(target_functions_dict, sample_sizes_list, q_size_list, Mrep = 20, outer_loop_steps = 25)
