@@ -24,13 +24,13 @@ q_size_list = [2, 5, 10]
 sample_sizes_list = [50, 100, 200, 500]
 
 
-def parallel_calc(m_rep, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=5, q_size=2):
+def parallel_calc(m_rep_iter, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=5, q_size=2):
     __, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
     __, mc_dict = run_bo_gpytorch(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
     __, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
     return [mc_dict, rqmc_dict, random_search_dict]
 
-def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20, outer_loop_steps = 2):
+def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, m_rep_iter, Mrep = 20, outer_loop_steps = 2):
     """
     function that loop over the different parameter settings
     """
@@ -49,7 +49,6 @@ def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20
             'X' : X,
             'y' : y,
             'dim' : dim,
-            'noise' : 0.01, 
             'f_target' : f_target
             }
 
@@ -74,57 +73,25 @@ def loop_over_parameters(dict_targets, sample_sizes_list, q_size_list, Mrep = 20
                 params_bo_rqmc['sample_size'] = sample_size
                 partial_parallel_calc = partial(parallel_calc, params_bo_mc=params_bo_mc, params_bo_rqmc=params_bo_rqmc, params_data=params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
 
-                if False:
-                    pass
-                    #processes = []
-                    #pool = mp.Pool(processes=3)
-                    #for i in range(4): # No. of processes
-                    #    p = mp.Process(target=partial_parallel_calc, args=(i,))
-                    #    p.start()
-                    #    processes.append(p)
-                    #for p in processes: p.join()
-                    #results = [pool.apply(parallel_calc, (x)) for x in range(Mrep)]
-                    #import ipdb; ipdb.set_trace()
-                    #results = [pool.map(partial_parallel_calc, range(Mrep))]
-                    #[pool.apply(partial_parallel_calc) for i in srange(Mrep)]
-                    #with ProcessPoolExecutor(max_workers=4) as executor:
-                    #    future = executor.submit(partial_parallel_calc, range(Mrep))
-                    #    res_parallel = future.result()
-                    #import ipdb; ipdb.set_trace()
-                else:
-                    for m_rep in range(Mrep):
-                        #try:
-                        #mc_dict, rqmc_dict, random_search_dict = parallel_calc(m_rep, params_bo_mc, params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                        mc_dict, rqmc_dict, random_search_dict = partial_parallel_calc(m_rep)
-                        #__, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                        #__, mc_dict = run_bo_gpytorch(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                        #__, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
-                        res_dict['MC'][str(sample_size)].append(mc_dict)
-                        res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
-                        res_dict['random_search'][str(sample_size)].append(random_search_dict)
-                        
-                        with open('pyro_bo_mrep_%s_%s_q_size_%s.pkl'%(Mrep, f_target.__name__, q_size), 'wb') as file:
-                            pickle.dump(res_dict, file, protocol=2)
+                mc_dict, rqmc_dict, random_search_dict = partial_parallel_calc(m_rep_iter)
+                #__, random_search_dict = random_search(params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                #__, mc_dict = run_bo_gpytorch(params_bo_mc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                #__, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data, outer_loop_steps=outer_loop_steps, q_size=q_size)
+                res_dict['MC'][str(sample_size)].append(mc_dict)
+                res_dict['RQMC'][str(sample_size)].append(rqmc_dict)
+                res_dict['random_search'][str(sample_size)].append(random_search_dict)
+                
+                with open('pyro_bo_mrep_%s_%s_%s_q_size_%s.pkl'%(m_rep_iter, Mrep, f_target.__name__, q_size), 'wb') as file:
+                    pickle.dump(res_dict, file, protocol=2)
 
-                        #except:
-                        #   print("BO did not complete, problem")
-                    
-    
-
-    #elif parallelism == "multi":
-    #    
-    #    import ipdb; ipdb.set_trace()
-    #    def testfunction(x):
-    #        return x**2
-    #    with concurrent.futures.ProcessPoolExecutor() as executor:
-    #        result = executor.map(testfunction, range(4))
-    #
-    #    pool.submit(lambda x: x**2, range(4))
-    #    results = [pool.map(parallel_calc, range(Mrep))]
-    #    output = [p.get() for p in results]
-    #    for m_rep, res_dict in enumerate(output):
-    #        with open('pyro_bo_mrep_%s_%s_rep_%s.pkl'%(Mrep, f_target.__name__, m_rep), 'wb') as file:
-    #            pickle.dump(res_dict, file, protocol=2)
 
 if __name__ == '__main__':
-    loop_over_parameters(target_functions_dict, sample_sizes_list, q_size_list, Mrep = 20, outer_loop_steps = 25)
+    Mrep_total = 20
+    
+    if len(sys.argv)>1:
+        m_rep = int(sys.argv[1])
+        loop_over_parameters(target_functions_dict, sample_sizes_list, q_size_list, m_rep, Mrep = Mrep_total, outer_loop_steps = 25)
+        import ipdb; ipdb.set_trace()
+    else:
+        for m_rep in range(Mrep_total):
+            loop_over_parameters(target_functions_dict, sample_sizes_list, q_size_list, m_rep, Mrep = Mrep_total, outer_loop_steps = 25)
