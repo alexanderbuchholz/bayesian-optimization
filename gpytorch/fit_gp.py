@@ -48,6 +48,8 @@ class ExactGPModel(gpytorch.models.ExactGP):
         super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
         self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=2.5))#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
+        #self.covar_module = gpytorch.kernels.MaternKernel(nu=2.5)#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
+        
     
     def forward(self, x):
         mean_x = self.mean_module(x)
@@ -62,7 +64,12 @@ class TrainedGPModel(ExactGPModel):
 
     def train_model(self):
         # initialize likelihood and model
+        #import ipdb; ipdb.set_trace()
         self.likelihood = gpytorch.likelihoods.GaussianLikelihood()
+        self.likelihood.raw_noise = -10
+        self.likelihood.raw_noise.requires_grad = False
+        
+        #import ipdb; ipdb.set_trace()
         self.model = ExactGPModel(self.train_x, self.train_y, self.likelihood)
 
         # Find optimal model hyperparameters
@@ -70,14 +77,14 @@ class TrainedGPModel(ExactGPModel):
         self.likelihood.train()
 
         # Use the adam optimizer
-        optimizer = torch.optim.SGD([
+        optimizer = torch.optim.Adam([
             {'params': self.model.parameters()},  # Includes GaussianLikelihood parameters
         ], lr=0.1)
 
         # "Loss" for GPs - the marginal log likelihood
         mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
 
-        training_iter = 351
+        training_iter = 501
         for i in range(training_iter):
             # Zero gradients from previous iteration
             optimizer.zero_grad()
@@ -93,7 +100,38 @@ class TrainedGPModel(ExactGPModel):
                     self.model.likelihood.log_noise.item()
                 ))
             optimizer.step()
-    
+
+    def re_train_model(self):
+        # Find optimal model hyperparameters
+        self.model = ExactGPModel(self.train_x, self.train_y, self.likelihood)
+        self.model.train()
+        self.likelihood.train()
+
+        # Use the adam optimizer
+        optimizer = torch.optim.Adam([
+            {'params': self.model.parameters()},  # Includes GaussianLikelihood parameters
+        ], lr=0.1)
+
+        # "Loss" for GPs - the marginal log likelihood
+        mll = gpytorch.mlls.ExactMarginalLogLikelihood(self.likelihood, self.model)
+
+        training_iter = 501
+        for i in range(training_iter):
+            # Zero gradients from previous iteration
+            optimizer.zero_grad()
+            # Output from model
+            output = self.model(self.train_x)
+            # Calc loss and backprop gradients
+            loss = -mll(output, self.train_y)
+            loss.backward()
+            if i % 50 == 0:
+                print('Iter %d/%d - Loss: %.3f   log_lengthscale: %.3f   log_noise: %.3f' % (
+                    i + 1, training_iter, loss.item(),
+                    self.model.covar_module.base_kernel.log_lengthscale.item(),
+                    self.model.likelihood.log_noise.item()
+                ))
+            optimizer.step()
+
     def update_gp(self, new_x, new_y):
         # update the gp with new points and retrains the model
         self.train_x = torch.cat([self.train_x, new_x])
@@ -103,7 +141,7 @@ class TrainedGPModel(ExactGPModel):
         y_new = np.delete(self.train_y.detach().numpy(), ind_to_remove)
         self.train_x = torch.tensor(X_new)
         self.train_y = torch.tensor(y_new)
-        self.train_model()
+        self.re_train_model()
 
     def pred_model(self, test_x):
         self.model.eval()
@@ -146,14 +184,16 @@ class TrainedGPModel(ExactGPModel):
             z_sample = torch.tensor(z_sample, dtype=torch.float32, requires_grad=False)
         #sigma = torch.cholesky(variance_q)
         try:
-            sigma = torch.cholesky(variance_q)
+            #sigma = torch.cholesky(variance_q)
+            sigma = gpytorch.root_decomposition(variance_q).evaluate()
         except:
             small_epsilon = 0.01
             identity_mat = torch.eye(variance_q.shape[0])
             try:
                 #U, S, V = torch.svd(variance_q+small_epsilon*identity_mat)
                 #sigma = torch.mm(U, torch.diag(S**0.5))
-                sigma = torch.cholesky(variance_q+small_epsilon*identity_mat)
+                #sigma = torch.cholesky(variance_q+small_epsilon*identity_mat)
+                sigma = gpytorch.root_decomposition(variance_q+small_epsilon*identity_mat).evaluate()
             except:
                 import ipdb; ipdb.set_trace()
                 # in case it is still not working
@@ -162,6 +202,53 @@ class TrainedGPModel(ExactGPModel):
         #return -torch.clamp(f_star-f_sample.min(0),0).mean(1).unsqueeze(0)
         #return self.x_q**2
         return -torch.clamp(f_star-f_sample.min(0)[0],0).mean().unsqueeze(0)
+
+    def q_knowledge_gradient(self,
+        sampling_type='MC', 
+        sample_size=200):
+        raise ValueError('not implemented yet!')
+
+        # 1. minimize the mu_n 
+        #trained_gp.prepare_grad(x_start)
+        mu_q, __, __ = self.pred_model(x_start)
+        optimizer = torch.optim.Adam([x_start], lr=0.1)
+        for t in range(50):
+            optimizer.zero_grad()
+            loss = trained_gp.q_expected_improvement(sampling_type=sampling_type, sample_size=sample_size)
+            #loss.retain_grad()
+            loss.backward(retain_graph=True)
+            #import ipdb; ipdb.set_trace()
+            optimizer.step()
+
+        # 2. calc min of inner term
+        mu_q, variance_q, __ = self.pred_model(self.x_q)
+        f_star = (self.train_y).min()
+        if sampling_type == 'MC':
+            z_sample = torch.normal(torch.zeros(mu_q.shape[0], sample_size))
+        elif sampling_type == 'RQMC':
+            z_sample = sobol_sequence(sample_size, mu_q.shape[0], IFLAG=1, iSEED=np.random.randint(10**5), TRANSFORM=1).transpose()
+            z_sample = torch.tensor(z_sample, dtype=torch.float32, requires_grad=False)
+        #sigma = torch.cholesky(variance_q)
+        try:
+            #sigma = torch.cholesky(variance_q)
+            sigma = gpytorch.root_decomposition(variance_q).evaluate()
+        except:
+            small_epsilon = 0.01
+            identity_mat = torch.eye(variance_q.shape[0])
+            try:
+                #U, S, V = torch.svd(variance_q+small_epsilon*identity_mat)
+                #sigma = torch.mm(U, torch.diag(S**0.5))
+                #sigma = torch.cholesky(variance_q+small_epsilon*identity_mat)
+                sigma = gpytorch.root_decomposition(variance_q+small_epsilon*identity_mat).evaluate()
+            except:
+                import ipdb; ipdb.set_trace()
+                # in case it is still not working
+        f_sample = mu_q.unsqueeze(1)+torch.mm(sigma, z_sample)
+        #import ipdb; ipdb.set_trace()
+        #return -torch.clamp(f_star-f_sample.min(0),0).mean(1).unsqueeze(0)
+        #return self.x_q**2
+        return -torch.clamp(f_star-f_sample.min(0)[0],0).mean().unsqueeze(0)
+
 
     def analytic_expected_improvement(self):
         xi = 0.00
@@ -280,7 +367,7 @@ def random_search(params_data, outer_loop_steps=10, q_size=5):
     return(None, res_dict)
 
 
-def run_bo_gpytorch(params_bo, params_data, outer_loop_steps=10, q_size=2):
+def run_bo_gpytorch(params_bo, params_data, outer_loop_steps=2, q_size=2):
     """
     run the bo 
     """
@@ -395,8 +482,8 @@ if __name__ == '__main__':
         'sample_size' : 20,
         'num_candidates' : 20
     }
-    res_model_mc, mc_dict = run_bo_gpytorch(params_bo_mc, params_data)
-    plot_gp_1d(res_model_mc)
+    res_model_rqmc, rqmc_dict = run_bo_gpytorch(params_bo_rqmc, params_data)
+    plot_gp_1d(res_model_rqmc)
     import ipdb; ipdb.set_trace()
 
 
