@@ -47,7 +47,8 @@ class ExactGPModel(gpytorch.models.ExactGP):
     def __init__(self, train_x, train_y, likelihood):
         super(ExactGPModel, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.ConstantMean()
-        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=2.5))#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
+        #self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.MaternKernel(nu=2.5))#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
+        self.covar_module = gpytorch.kernels.ScaleKernel(gpytorch.kernels.RBFKernel())#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
         #self.covar_module = gpytorch.kernels.MaternKernel(nu=2.5)#+gpytorch.kernels.WhiteNoiseKernel(variances=torch.ones(train_x.shape))
         
     
@@ -160,7 +161,17 @@ class TrainedGPModel(ExactGPModel):
         
 
     def prepare_grad(self, x_q):
+        """
+            function that helps prepare for the optimization
+        """
         self.x_q = torch.tensor(x_q, requires_grad=True)
+
+    def prepare_mu(self, x_mu):
+        """
+            function that helps prepare for the optimization of the knowledge gradient
+        """
+        self.x_mu = torch.tensor(x_mu, requires_grad=True)
+
 
     def pred_model_grad(self):
         #raise ValueError('dont use this function any more, only for testing the autograd')
@@ -206,23 +217,33 @@ class TrainedGPModel(ExactGPModel):
     def q_knowledge_gradient(self,
         sampling_type='MC', 
         sample_size=200):
-        raise ValueError('not implemented yet!')
+        
 
         # 1. minimize the mu_n 
-        #trained_gp.prepare_grad(x_start)
-        mu_q, __, __ = self.pred_model(x_start)
-        optimizer = torch.optim.Adam([x_start], lr=0.1)
-        for t in range(50):
+        x_init = self.train_x[self.train_y.argmin(),:]
+        x_start = x_init.clone().detach().requires_grad_(True).unsqueeze(0)
+        self.prepare_mu(x_start)
+        #import ipdb; ipdb.set_trace()
+        mu_q, __, __ = self.pred_model(self.x_mu)
+        #raise ValueError('not implemented yet!')
+        optimizer = torch.optim.Adam([self.x_mu], lr=0.01)
+        for t in range(10):
             optimizer.zero_grad()
-            loss = trained_gp.q_expected_improvement(sampling_type=sampling_type, sample_size=sample_size)
-            #loss.retain_grad()
-            loss.backward(retain_graph=True)
+            mu_q, __, __ = self.pred_model(self.x_mu)
+            loss = mu_q
+            #loss.backward()#retain_grad()
+            loss.backward()
             #import ipdb; ipdb.set_trace()
             optimizer.step()
+        # results of the first minimization
+        x_star = torch.clamp(self.x_mu.clone().detach(), 0., 1.)
+        mu_q, __, __ = self.pred_model(x_star)
+        mu_star = mu_q.clone().detach()
 
-        # 2. calc min of inner term
+        import ipdb; ipdb.set_trace()
+
+        # 2. calc expectation
         mu_q, variance_q, __ = self.pred_model(self.x_q)
-        f_star = (self.train_y).min()
         if sampling_type == 'MC':
             z_sample = torch.normal(torch.zeros(mu_q.shape[0], sample_size))
         elif sampling_type == 'RQMC':
@@ -299,16 +320,20 @@ def variance_gradient(trained_gp, x_one, m_rep=20, sample_size=200, sampling_typ
     return(np.array(f_list), np.array(grad_list))
 
 
-def optimize_ei(trained_gp, 
+def optimize_acquisition(trained_gp, 
     x_start, 
     sampling_type="RQMC", 
     sample_size=20,
-    bounds=(0,1)):
+    bounds=(0,1), 
+    acquisition='qKG'):
     trained_gp.prepare_grad(x_start)
     optimizer = torch.optim.Adam([trained_gp.x_q], lr=0.1)
     for t in range(50):
         optimizer.zero_grad()
-        loss = trained_gp.q_expected_improvement(sampling_type=sampling_type, sample_size=sample_size)
+        if acquisition == 'qEI':
+            loss = trained_gp.q_expected_improvement(sampling_type=sampling_type, sample_size=sample_size)
+        elif acquisition == 'qKG':
+            loss = trained_gp.q_knowledge_gradient(sampling_type=sampling_type, sample_size=sample_size)
         #loss.retain_grad()
         loss.backward(retain_graph=True)
         #import ipdb; ipdb.set_trace()
@@ -336,7 +361,7 @@ def next_x(trained_gp,
     for i in range(num_candidates):
         x_init = lhs(n=dim, samples=q_size, criterion='maximin')
         x_init_points = torch.tensor(x_init, dtype=torch.float)
-        x = optimize_ei(trained_gp, x_init_points, sampling_type=sampling_type, sample_size=sample_size)
+        x = optimize_acquisition(trained_gp, x_init_points, sampling_type=sampling_type, sample_size=sample_size)
         y = trained_gp.q_expected_improvement(sampling_type=sampling_type, sample_size=sample_size)
         
         candidates.append(x)
